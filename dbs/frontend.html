@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DBS — Tank Monitoring</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+  :root {
+	--bg:        #0d1117;
+	--surface:   #161b22;
+	--border:    #30363d;
+	--accent:    #58a6ff;
+	--danger:    #f85149;
+	--warning:   #e3b341;
+	--ok:        #3fb950;
+	--text:      #c9d1d9;
+	--muted:     #8b949e;
+	--l1-color:  #e3b341;
+	--l2-color:  #f85149;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+	background: var(--bg);
+	color: var(--text);
+	font-family: system-ui, sans-serif;
+	font-weight: 300;
+	min-height: 100vh;
+	padding: 1rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+  }
+
+  .container {
+	width: 100%;
+	max-width: 620px;
+  }
+
+  header {
+	display: flex;
+	align-items: baseline;
+	gap: 1rem;
+	margin-bottom: 1rem;
+	border-bottom: 1px solid var(--border);
+	padding-bottom: 0.5rem;
+	width: 100%;
+  }
+
+  header h1 {
+	font-family: monospace;
+	font-size: 2rem;
+	color: var(--accent);
+	letter-spacing: 0.15em;
+  }
+
+  header span {
+	font-size: 0.8rem;
+	color: var(--muted);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+  }
+
+  .card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 1rem;
+	margin-bottom: 0.75rem;
+	width: 100%;
+  }
+
+  .card-title {
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.15em;
+	color: var(--muted);
+	margin-bottom: 0.6rem;
+  }
+
+  /* Chart */
+  .chart-wrap {
+	position: relative;
+	height: 160px;
+  }
+
+  /* Status */
+  .status-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+  }
+
+  .status-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--muted);
+	flex-shrink: 0;
+	transition: background 0.3s;
+  }
+
+  .status-dot.ok          { background: var(--ok);      box-shadow: 0 0 8px var(--ok); }
+  .status-dot.unconnected { background: var(--warning);  box-shadow: 0 0 8px var(--warning); }
+  .status-dot.unavailable { background: var(--danger);   box-shadow: 0 0 8px var(--danger); }
+
+  #status-label {
+	font-family: monospace;
+	font-size: 1rem;
+	letter-spacing: 0.08em;
+  }
+
+  /* Controls */
+  .controls-grid {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 1.5rem 2rem;
+	align-items: center;
+  }
+
+  .ctrl-label {
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
+	color: var(--muted);
+  }
+
+  .radio-group {
+	display: flex;
+	gap: 1.5rem;
+  }
+
+  .radio-group label {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	cursor: pointer;
+	font-size: 0.9rem;
+	user-select: none;
+  }
+
+  .radio-group input[type="radio"] {
+	accent-color: var(--accent);
+	width: 15px;
+	height: 15px;
+	cursor: pointer;
+  }
+
+  .radio-group label.disabled {
+	color: var(--muted);
+	cursor: not-allowed;
+  }
+
+  .slider-wrap {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+  }
+
+  .slider-wrap span {
+	font-family: monospace;
+	font-size: 0.75rem;
+	color: var(--muted);
+	min-width: 2.5rem;
+  }
+
+  .slider-wrap span.right { text-align: right; }
+
+  input[type="range"] {
+	-webkit-appearance: none;
+	flex: 1;
+	height: 4px;
+	background: var(--border);
+	border-radius: 2px;
+	outline: none;
+	cursor: pointer;
+	transition: opacity 0.2s;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--accent);
+	cursor: pointer;
+	box-shadow: 0 0 6px var(--accent);
+  }
+
+  input[type="range"]:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+  }
+
+  input[type="range"]:disabled::-webkit-slider-thumb {
+	cursor: not-allowed;
+  }
+
+  #valve-value {
+	font-family: monospace;
+	font-size: 0.85rem;
+	color: var(--accent);
+	min-width: 3rem;
+	text-align: right;
+  }
+
+  .legend {
+	display: flex;
+	gap: 1.5rem;
+	margin-top: 0.4rem;
+  }
+
+  .legend-item {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.72rem;
+	color: var(--muted);
+  }
+
+  .legend-line {
+	width: 20px;
+	height: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+  <h1>DBS</h1>
+  <span>Smart Tank Monitoring System</span>
+</header>
+
+<div class="card">
+  <div class="card-title">Water Level — last 10 measurements</div>
+  <div class="chart-wrap">
+	<canvas id="chart"></canvas>
+  </div>
+  <div class="legend">
+	<div class="legend-item">
+	  <div class="legend-line" style="background: var(--accent);"></div>
+	  Level (m)
+	</div>
+	<div class="legend-item">
+	  <div class="legend-line" style="background: var(--l1-color); border-top: 2px dashed var(--l1-color); height:0;"></div>
+	  L1 = 0.30 m
+	</div>
+	<div class="legend-item">
+	  <div class="legend-line" style="background: var(--l2-color); border-top: 2px dashed var(--l2-color); height:0;"></div>
+	  L2 = 0.40 m
+	</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">System Status</div>
+  <div class="status-row">
+	<div class="status-dot" id="status-dot"></div>
+	<span id="status-label">—</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Controls</div>
+  <div class="controls-grid">
+
+	<div class="ctrl-label">Mode</div>
+	<div class="radio-group" id="radio-group">
+	  <label id="label-auto">
+		<input type="radio" name="mode" value="AUTOMATIC" id="radio-auto"> Automatic
+	  </label>
+	  <label id="label-manual">
+		<input type="radio" name="mode" value="MANUAL" id="radio-manual"> Manual
+	  </label>
+	</div>
+
+	<div class="ctrl-label">Valve Opening</div>
+	<div class="slider-wrap">
+	  <span>0%</span>
+	  <input type="range" id="slider" min="0" max="100" value="50" disabled>
+	  <span class="right">100%</span>
+	  <span id="valve-value">50%</span>
+	</div>
+
+  </div>
+</div>
+
+</div>
+<script>
+  const L1 = 0.30;
+  const L2 = 0.40;
+  const API = 'http://localhost:8080/api';
+  const POLL_INTERVAL = 3000;
+
+  const ctx = document.getElementById('chart').getContext('2d');
+  const chart = new Chart(ctx, {
+	type: 'line',
+	data: {
+	  labels: [],
+	  datasets: [
+		{
+		  label: 'Level (m)',
+		  data: [],
+		  borderColor: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+		  backgroundColor: 'rgba(88,166,255,0.08)',
+		  borderWidth: 2,
+		  pointRadius: 3,
+		  tension: 0.3,
+		  fill: true,
+		}
+	  ]
+	},
+	options: {
+	  responsive: true,
+	  maintainAspectRatio: false,
+	  animation: false,
+	  scales: {
+		x: {
+		  ticks: { color: '#8b949e', font: { family: 'Share Tech Mono', size: 10 } },
+		  grid: { color: '#21262d' }
+		},
+		y: {
+		  min: 0,
+		  suggestedMax: 0.20,
+		  ticks: { color: '#8b949e', font: { family: 'Share Tech Mono', size: 10 } },
+		  grid: { color: '#21262d' }
+		}
+	  },
+	  plugins: {
+		legend: { display: false },
+		annotation: {
+		  annotations: {
+			l1: {
+			  type: 'line', yMin: L1, yMax: L1,
+			  borderColor: '#e3b341', borderWidth: 1.5, borderDash: [5, 4],
+			  label: { content: 'L1', enabled: true, color: '#e3b341', font: { size: 10 } }
+			},
+			l2: {
+			  type: 'line', yMin: L2, yMax: L2,
+			  borderColor: '#f85149', borderWidth: 1.5, borderDash: [5, 4],
+			  label: { content: 'L2', enabled: true, color: '#f85149', font: { size: 10 } }
+			}
+		  }
+		}
+	  }
+	}
+  });
+
+  // chartjs-plugin-annotation is used for L1/L2 lines drawing
+  // lines are drawn manually if plugin is not available
+
+  let currentMode = null;
+  let sliderDirty = false;
+  let sliderTimeout = null;
+
+  // --- DOM references ---
+  const statusDot   = document.getElementById('status-dot');
+  const statusLabel = document.getElementById('status-label');
+  const radioAuto   = document.getElementById('radio-auto');
+  const radioManual = document.getElementById('radio-manual');
+  const labelAuto   = document.getElementById('label-auto');
+  const labelManual = document.getElementById('label-manual');
+  const slider      = document.getElementById('slider');
+  const valveValue  = document.getElementById('valve-value');
+
+  // --- poll CUS API ---
+  async function poll() {
+	try {
+	  const res = await fetch(`${API}/state`);
+	  if (!res.ok) throw new Error('not ok');
+	  const data = await res.json();
+	  updateUI(data);
+	} catch (e) {
+	  setStatus('NOT AVAILABLE');
+	  setControlsEnabled(false);
+	}
+  }
+
+  function updateUI(data) {
+	// status
+	const mode = data.mode;
+	currentMode = mode;
+
+	if (mode === 'UNCONNECTED') {
+	  setStatus('UNCONNECTED');
+	  setControlsEnabled(false);
+	} else {
+	  setStatus(mode === 'AUTOMATIC' ? 'AUTOMATIC' : 'MANUAL');
+	  setControlsEnabled(true);
+	}
+
+	// mode radio buttons
+	if (!sliderDirty) {
+	  if (mode === 'AUTOMATIC' || mode === 'UNCONNECTED') {
+		radioAuto.checked = true;
+	  } else if (mode === 'MANUAL') {
+		radioManual.checked = true;
+	  }
+	}
+
+	// avoid updating slider if user is interacting
+	if (!sliderDirty) {
+	  slider.value = data.valveOpening;
+	  valveValue.textContent = data.valveOpening + '%';
+	}
+
+	slider.disabled = (mode !== 'MANUAL');
+
+	// chart
+	if (data.measurements && data.measurements.length > 0) {
+	  const labels = data.measurements.map(m => {
+		const d = new Date(m.time);
+		return d.getHours().toString().padStart(2,'0') + ':' +
+			   d.getMinutes().toString().padStart(2,'0') + ':' +
+			   d.getSeconds().toString().padStart(2,'0');
+	  }).reverse();
+	  const values = data.measurements.map(m => m.value).reverse();
+	  chart.data.labels = labels;
+	  chart.data.datasets[0].data = values;
+	  chart.update('none');
+	}
+  }
+
+  function setStatus(s) {
+	statusLabel.textContent = s;
+	statusDot.className = 'status-dot';
+	if (s === 'AUTOMATIC' || s === 'MANUAL') statusDot.classList.add('ok');
+	else if (s === 'UNCONNECTED')            statusDot.classList.add('unconnected');
+	else                                     statusDot.classList.add('unavailable');
+  }
+
+  function setControlsEnabled(enabled) {
+	const disabled = !enabled;
+	radioAuto.disabled   = disabled;
+	radioManual.disabled = disabled;
+	labelAuto.classList.toggle('disabled', disabled);
+	labelManual.classList.toggle('disabled', disabled);
+	if (disabled) slider.disabled = true;
+  }
+
+  // mode switch
+  document.querySelectorAll('input[name="mode"]').forEach(radio => {
+	radio.addEventListener('change', async (e) => {
+	  const newMode = e.target.value;
+	  try {
+		await fetch(`${API}/mode`, {
+		  method: 'POST',
+		  headers: { 'Content-Type': 'application/json' },
+		  body: JSON.stringify({ mode: newMode })
+		});
+	  } catch (err) {
+		console.error('Mode change failed', err);
+	  }
+	});
+  });
+
+  // valve slider
+  slider.addEventListener('input', () => {
+	valveValue.textContent = slider.value + '%';
+	sliderDirty = true;
+	clearTimeout(sliderTimeout);
+	sliderTimeout = setTimeout(sendValve, 400);
+  });
+
+  slider.addEventListener('change', () => {
+	clearTimeout(sliderTimeout);
+	sendValve();
+  });
+
+  async function sendValve() {
+	try {
+	  await fetch(`${API}/valve`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ opening: parseInt(slider.value) })
+	  });
+	} catch (err) {
+	  console.error('Valve update failed', err);
+	} finally {
+	  sliderDirty = false;
+	}
+  }
+
+  poll();
+  setInterval(poll, POLL_INTERVAL);
+</script>
+</body>
+</html>
